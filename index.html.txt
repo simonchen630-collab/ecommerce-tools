@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>終極全能版 - 電商圖產生器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+
+    // 獨立的圖片上傳與拖曳元件 (去除標題，專注於上傳行為)
+    const ImageUploader = ({ value, onChange }) => {
+      const [isDragging, setIsDragging] = useState(false);
+      const [inputText, setInputText] = useState(value.startsWith('data:image') ? '' : value);
+
+      // 當外部 value 改變時 (例如載入樣板或清除)，同步更新輸入框
+      useEffect(() => {
+        if (!value) setInputText('');
+        else if (!value.startsWith('data:image')) setInputText(value);
+      }, [value]);
+
+      const processInput = (val) => {
+        const trimmed = val.trim();
+        if (!trimmed) {
+          onChange('');
+          return;
+        }
+        // 智慧判斷：如果是網址就直接用，如果不是就當作型號組合專屬網址
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image')) {
+          onChange(trimmed);
+        } else {
+          const constructedUrl = `https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/${trimmed}_1.jpg`;
+          onChange(constructedUrl);
+          setInputText(constructedUrl); // 變回完整網址讓使用者知道已經轉換成功
+        }
+      };
+
+      const handleFile = (file) => {
+        if (file && file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => onChange(event.target.result);
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+      const handleDragOver = (e) => { prevent(e); setIsDragging(true); };
+      const handleDragLeave = (e) => { prevent(e); setIsDragging(false); };
+      const handleDrop = (e) => { prevent(e); setIsDragging(false); handleFile(e.dataTransfer.files[0]); };
+
+      // 新增：處理剪貼簿貼上事件 (Ctrl+V / Cmd+V)
+      const handlePaste = (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+          // 如果剪貼簿裡包含圖片
+          if (items[i].type.indexOf('image') !== -1) {
+            e.preventDefault(); // 阻止預設的貼上行為(避免貼上一堆亂碼)
+            const file = items[i].getAsFile();
+            handleFile(file);
+            return;
+          }
+        }
+      };
+
+      return (
+        <div 
+          className={`flex flex-col gap-2 p-3 rounded-lg border-2 transition-colors focus-within:ring-2 focus-within:ring-blue-100 ${
+            isDragging ? 'bg-blue-50 border-blue-400 border-dashed' : 'bg-gray-50 border-gray-200 border-solid'
+          }`}
+          onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+          onPaste={handlePaste}
+        >
+          {isDragging && <div className="text-xs font-bold text-blue-600 text-center mb-1">放開以載入圖片</div>}
+          <input 
+            type="text" 
+            placeholder="貼網址、截圖Ctrl+V，或輸入型號按Enter..." 
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); processInput(inputText); } }}
+            onBlur={() => processInput(inputText)}
+            className="w-full p-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-800"
+          />
+          <div className="flex items-center justify-between mt-1">
+            <input 
+              type="file" accept="image/*" onChange={(e) => handleFile(e.target.files[0])}
+              className="text-[10px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:font-bold file:bg-gray-200 hover:file:bg-gray-300 cursor-pointer w-[140px]"
+            />
+            {value && <button onClick={() => onChange('')} className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1">清除</button>}
+          </div>
+        </div>
+      );
+    };
+
+    // 單一欄位的高級控制面板 (包含標題、微調拉桿、背景滴管、上傳區塊)
+    const ImageSlotControl = ({ data, onChange, onApplyBgToAll, extraHeader }) => {
+      return (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3 relative overflow-hidden">
+          {/* 標題與底色控制列 */}
+          <div className="flex justify-between items-center border-b border-gray-100 pb-2 z-10">
+            <div className="flex items-center gap-3">
+              <span className="font-extrabold text-gray-800 text-sm md:text-base">{data.label}</span>
+              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-md">
+                <input 
+                  type="color" title="吸取背景顏色" value={data.bgColor} 
+                  onChange={(e) => onChange({...data, bgColor: e.target.value})} 
+                  className="w-5 h-5 p-0 border-0 rounded cursor-pointer outline-none bg-transparent" 
+                />
+                <button onClick={() => onApplyBgToAll(data.bgColor)} className="text-[10px] bg-white border border-gray-300 hover:bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold transition-colors">
+                  套用全
+                </button>
+              </div>
+            </div>
+            {extraHeader}
+          </div>
+
+          {/* 微調拉桿列 */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+            <div className="flex flex-col gap-0.5">
+              <div className="flex justify-between text-[10px] font-bold text-gray-500"><span>放大</span><span>{data.zoom}x</span></div>
+              <input type="range" min="0.5" max="3" step="0.1" value={data.zoom} onChange={(e) => onChange({...data, zoom: Number(e.target.value)})} className="w-full h-1 bg-gray-300 rounded appearance-none cursor-pointer" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex justify-between text-[10px] font-bold text-gray-500"><span>左右</span><span>{data.offsetX}</span></div>
+              <input type="range" min="-400" max="400" step="10" value={data.offsetX} onChange={(e) => onChange({...data, offsetX: Number(e.target.value)})} className="w-full h-1 bg-gray-300 rounded appearance-none cursor-pointer" />
+            </div>
+            <div className="flex flex-col gap-0.5 col-span-2">
+              <div className="flex justify-between text-[10px] font-bold text-gray-500"><span>上下</span><span>{data.offsetY}</span></div>
+              <input type="range" min="-400" max="400" step="10" value={data.offsetY} onChange={(e) => onChange({...data, offsetY: Number(e.target.value)})} className="w-full h-1 bg-gray-300 rounded appearance-none cursor-pointer" />
+            </div>
+          </div>
+
+          <ImageUploader value={data.imageSrc} onChange={(val) => onChange({...data, imageSrc: val})} />
+        </div>
+      );
+    };
+
+    // 產生預設的欄位資料結構
+    const createSlot = (label, text = '') => ({
+      id: Math.random().toString(36).substring(2, 9),
+      label, text, imageSrc: '', zoom: 1.3, offsetX: 0, offsetY: 0, bgColor: '#F8F9FA'
+    });
+
+    const styleOptionsList = Array.from({ length: 26 }).map((_, i) => `${String.fromCharCode(65 + i)}款`);
+
+    function App() {
+      // 1. 全域標籤頁狀態
+      const [activeTab, setActiveTab] = useState('yahoo'); // 將預設分頁設為 Yahoo 方便測試
+      
+      // 2. 帶標題版型共用文字狀態 (前四個 Tab 用)
+      const [headerData, setHeaderData] = useState({
+        style: 'A款', brand: 'NIKE', product: '男 運動休閒鞋 FV0376'
+      });
+
+      // 3. 各分頁專屬的圖片欄位資料結構
+      const [shoesState, setShoesState] = useState([createSlot('中央大主圖'), createSlot('縮圖 左'), createSlot('縮圖 中'), createSlot('縮圖 右')]);
+      const [clothesState, setClothesState] = useState([createSlot('左側服飾圖'), createSlot('右側服飾圖')]);
+      const [singleState, setSingleState] = useState([createSlot('單品大圖')]);
+      const [tnfState, setTnfState] = useState([createSlot('左側主圖'), createSlot('右側主圖'), createSlot('縮圖 左'), createSlot('縮圖 中'), createSlot('縮圖 右')]);
+      
+      const [yahooState, setYahooState] = useState({
+        itemCount: 5, layoutType: 'vertical', textPosition: 'bottom-center', // 預設測試垂直排版
+        items: Array.from({length: 8}).map((_, i) => createSlot(`${String.fromCharCode(65+i)}`, `${String.fromCharCode(65+i)}款-型號`))
+      });
+
+      const [lifestyleState, setLifestyleState] = useState({
+        leftWidth: 500, itemCount: 6, rightCols: 1, textPosition: 'bottom-left',
+        mainImage: createSlot('📸 左側形象大圖'),
+        items: Array.from({length: 8}).map((_, i) => createSlot(`${String.fromCharCode(65+i)}`, `${String.fromCharCode(65+i)}款-型號`))
+      });
+
+      const canvasRef = useRef(null);
+      const [templates, setTemplates] = useState([]);
+      const [selectedTemplate, setSelectedTemplate] = useState('');
+      const [newTemplateName, setNewTemplateName] = useState('');
+
+      useEffect(() => {
+        const saved = localStorage.getItem('imageGenTemplates');
+        if (saved) setTemplates(JSON.parse(saved));
+      }, []);
+
+      const saveTemplate = () => {
+        if (!newTemplateName.trim()) return alert('請輸入樣板名稱！');
+        
+        const extractParams = (items) => items.map(i => ({ zoom: i.zoom, offsetX: i.offsetX, offsetY: i.offsetY, bgColor: i.bgColor }));
+
+        const templateData = {
+            activeTab,
+            shoesState: extractParams(shoesState),
+            clothesState: extractParams(clothesState),
+            singleState: extractParams(singleState),
+            tnfState: extractParams(tnfState),
+            yahooState: {
+                itemCount: yahooState.itemCount,
+                layoutType: yahooState.layoutType,
+                textPosition: yahooState.textPosition,
+                items: extractParams(yahooState.items)
+            },
+            lifestyleState: {
+                leftWidth: lifestyleState.leftWidth,
+                itemCount: lifestyleState.itemCount,
+                rightCols: lifestyleState.rightCols,
+                textPosition: lifestyleState.textPosition,
+                mainImage: { zoom: lifestyleState.mainImage.zoom, offsetX: lifestyleState.mainImage.offsetX, offsetY: lifestyleState.mainImage.offsetY, bgColor: lifestyleState.mainImage.bgColor },
+                items: extractParams(lifestyleState.items)
+            }
+        };
+
+        const newTemplates = [...templates.filter(t => t.name !== newTemplateName), { name: newTemplateName, data: templateData }];
+        setTemplates(newTemplates);
+        localStorage.setItem('imageGenTemplates', JSON.stringify(newTemplates));
+        setSelectedTemplate(newTemplateName);
+        setNewTemplateName('');
+      };
+
+      const loadTemplate = () => {
+        const t = templates.find(t => t.name === selectedTemplate);
+        if (!t) return;
+
+        const applyParams = (currentItems, savedItems) => currentItems.map((item, i) => {
+            const saved = savedItems?.[i];
+            return saved ? { ...item, zoom: saved.zoom, offsetX: saved.offsetX, offsetY: saved.offsetY, bgColor: saved.bgColor } : item;
+        });
+
+        if (t.data.activeTab) setActiveTab(t.data.activeTab);
+        if (t.data.shoesState) setShoesState(prev => applyParams(prev, t.data.shoesState));
+        if (t.data.clothesState) setClothesState(prev => applyParams(prev, t.data.clothesState));
+        if (t.data.singleState) setSingleState(prev => applyParams(prev, t.data.singleState));
+        if (t.data.tnfState) setTnfState(prev => applyParams(prev, t.data.tnfState));
+
+        if (t.data.yahooState) {
+            setYahooState(prev => ({
+                ...prev,
+                itemCount: t.data.yahooState.itemCount ?? prev.itemCount,
+                layoutType: t.data.yahooState.layoutType ?? 'horizontal',
+                textPosition: t.data.yahooState.textPosition ?? prev.textPosition,
+                items: applyParams(prev.items, t.data.yahooState.items)
+            }));
+        }
+
+        if (t.data.lifestyleState) {
+            setLifestyleState(prev => {
+                const s = t.data.lifestyleState;
+                const newMain = s.mainImage ? { ...prev.mainImage, zoom: s.mainImage.zoom, offsetX: s.mainImage.offsetX, offsetY: s.mainImage.offsetY, bgColor: s.mainImage.bgColor } : prev.mainImage;
+                return {
+                    ...prev,
+                    leftWidth: s.leftWidth ?? prev.leftWidth,
+                    itemCount: s.itemCount ?? prev.itemCount,
+                    rightCols: s.rightCols ?? prev.rightCols,
+                    textPosition: s.textPosition ?? prev.textPosition,
+                    mainImage: newMain,
+                    items: applyParams(prev.items, s.items)
+                };
+            });
+        }
+      };
+
+      const deleteTemplate = () => {
+        const newTemplates = templates.filter(t => t.name !== selectedTemplate);
+        setTemplates(newTemplates);
+        localStorage.setItem('imageGenTemplates', JSON.stringify(newTemplates));
+        setSelectedTemplate('');
+      };
+      
+      // 將某個數值(大小/平移/顏色) 一鍵套用到目前分頁的所有圖片上
+      const handleApplyGlobal = (key, val) => {
+        if (activeTab === 'shoes') setShoesState(prev => prev.map(i => ({...i, [key]: val})));
+        else if (activeTab === 'clothes') setClothesState(prev => prev.map(i => ({...i, [key]: val})));
+        else if (activeTab === 'single') setSingleState(prev => prev.map(i => ({...i, [key]: val})));
+        else if (activeTab === 'tnf') setTnfState(prev => prev.map(i => ({...i, [key]: val})));
+        else if (activeTab === 'yahoo') setYahooState(prev => ({...prev, items: prev.items.map(i => ({...i, [key]: val}))}));
+        else if (activeTab === 'lifestyle') {
+          setLifestyleState(prev => ({ ...prev, items: prev.items.map(i => ({...i, [key]: val})) }));
+        }
+      };
+
+      const getFirstItemValue = (key) => {
+        if (activeTab === 'shoes') return shoesState[0][key];
+        if (activeTab === 'clothes') return clothesState[0][key];
+        if (activeTab === 'single') return singleState[0][key];
+        if (activeTab === 'tnf') return tnfState[0][key];
+        if (activeTab === 'yahoo') return yahooState.items[0][key];
+        if (activeTab === 'lifestyle') return lifestyleState.items[0][key];
+        return 0;
+      };
+
+      useEffect(() => {
+        let isActive = true;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const loadImage = (src) => {
+          return new Promise((resolve) => {
+            if (!src) return resolve(null);
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = src;
+          });
+        };
+
+        const drawCanvas = async () => {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // 統一的圖片繪製與裁切函式
+          const drawSlot = (img, slotData, x, y, w, h, placeholderText) => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, y, w, h);
+            ctx.clip(); // 設定邊界裁切
+            
+            ctx.fillStyle = slotData.bgColor;
+            ctx.fillRect(x, y, w, h);
+
+            if (img) {
+              const imgRatio = img.width / img.height;
+              const cellRatio = w / h;
+              let drawW, drawH;
+              
+              // 基礎等比計算 (Contain)
+              if (imgRatio > cellRatio) {
+                drawW = w;
+                drawH = w / imgRatio;
+              } else {
+                drawH = h;
+                drawW = h * imgRatio;
+              }
+              
+              // 乘上微調放大倍率
+              drawW *= slotData.zoom;
+              drawH *= slotData.zoom;
+              
+              // 加上平移偏移量
+              const drawX = x + (w - drawW) / 2 + slotData.offsetX;
+              const drawY = y + (h - drawH) / 2 + slotData.offsetY;
+
+              ctx.drawImage(img, drawX, drawY, drawW, drawH);
+            } else {
+              ctx.fillStyle = '#DDDDDD';
+              ctx.font = 'bold 20px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(placeholderText, x + w / 2, y + h / 2);
+            }
+            ctx.restore();
+          };
+
+          const drawHeader = () => {
+            ctx.fillStyle = '#999999';
+            ctx.fillRect(0, 0, canvas.width, 130);
+            
+            ctx.fillStyle = '#0F0F0F';
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(220, 0); ctx.lineTo(170, 130); ctx.lineTo(0, 130);
+            ctx.closePath(); ctx.fill();
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.font = 'bold 72px "Noto Sans TC", sans-serif';
+            ctx.fillText(headerData.style, 40, 65);
+
+            const maxTextWidth = 1000 - 240 - 40;
+            ctx.letterSpacing = '2px';
+            
+            let bSize = 40;
+            ctx.font = `bold ${bSize}px "Noto Sans TC", sans-serif`;
+            while(ctx.measureText(headerData.brand).width > maxTextWidth && bSize > 12) {
+              bSize--; ctx.font = `bold ${bSize}px "Noto Sans TC", sans-serif`;
+            }
+            ctx.fillText(headerData.brand, 240, 45);
+
+            let pSize = 40;
+            ctx.font = `bold ${pSize}px "Noto Sans TC", sans-serif`;
+            while(ctx.measureText(headerData.product).width > maxTextWidth && pSize > 12) {
+              pSize--; ctx.font = `bold ${pSize}px "Noto Sans TC", sans-serif`;
+            }
+            ctx.fillText(headerData.product, 240, 90);
+            ctx.letterSpacing = '0px';
+          };
+
+          if (activeTab === 'shoes') {
+            const imgs = await Promise.all(shoesState.map(s => loadImage(s.imageSrc)));
+            if (!isActive) return;
+            drawHeader();
+            drawSlot(imgs[0], shoesState[0], 0, 130, 1000, 537, '主圖 (1000x537)');
+            const sz = 1000/3;
+            drawSlot(imgs[1], shoesState[1], 0, 667, sz, sz, '縮圖左');
+            drawSlot(imgs[2], shoesState[2], sz, 667, sz, sz, '縮圖中');
+            drawSlot(imgs[3], shoesState[3], sz*2, 667, sz, sz, '縮圖右');
+
+          } else if (activeTab === 'clothes') {
+            const imgs = await Promise.all(clothesState.map(s => loadImage(s.imageSrc)));
+            if (!isActive) return;
+            drawHeader();
+            drawSlot(imgs[0], clothesState[0], 0, 130, 500, 870, '左側服飾');
+            drawSlot(imgs[1], clothesState[1], 500, 130, 500, 870, '右側服飾');
+
+          } else if (activeTab === 'single') {
+            const img = await loadImage(singleState[0].imageSrc);
+            if (!isActive) return;
+            drawHeader();
+            drawSlot(img, singleState[0], 0, 130, 1000, 870, '單品大圖');
+
+          } else if (activeTab === 'tnf') {
+            const imgs = await Promise.all(tnfState.map(s => loadImage(s.imageSrc)));
+            if (!isActive) return;
+            drawHeader();
+            drawSlot(imgs[0], tnfState[0], 0, 130, 500, 537, '左側主圖');
+            drawSlot(imgs[1], tnfState[1], 500, 130, 500, 537, '右側主圖');
+            const sz = 1000/3;
+            drawSlot(imgs[2], tnfState[2], 0, 667, sz, sz, '縮圖左');
+            drawSlot(imgs[3], tnfState[3], sz, 667, sz, sz, '縮圖中');
+            drawSlot(imgs[4], tnfState[4], sz*2, 667, sz, sz, '縮圖右');
+
+          } else if (activeTab === 'yahoo') {
+            const count = yahooState.itemCount;
+            const layoutType = yahooState.layoutType || 'horizontal';
+            const activeItems = yahooState.items.slice(0, count);
+            const imgs = await Promise.all(activeItems.map(s => loadImage(s.imageSrc)));
+            if (!isActive) return;
+
+            const layout = [];
+            
+            // 橫式 (鞋類) 計算邏輯
+            if (layoutType === 'horizontal') {
+                let cols = 2; let rows = Math.ceil(count / 2);
+                if (count === 3) { cols = 1; rows = 3; }
+                const cellW = 1000 / cols; const cellH = 1000 / rows;
+
+                for(let i=0; i<count; i++) {
+                    let row = Math.floor(i / cols); let col = i % cols;
+                    if (count !== 3 && count % 2 === 1 && i === count - 1) col = 0.5; // 單數置中
+                    layout.push({x: col * cellW, y: row * cellH, w: cellW, h: cellH});
+                }
+            } else {
+                // 直式 (服飾) 上下兩排切割邏輯
+                const row1Count = Math.floor(count / 2);
+                const row2Count = Math.ceil(count / 2);
+                const cellH = 500; // 永遠兩排，所以高度固定 500
+                
+                for (let i = 0; i < count; i++) {
+                    if (i < row1Count) {
+                        const cellW = 1000 / row1Count;
+                        layout.push({x: i * cellW, y: 0, w: cellW, h: cellH});
+                    } else {
+                        const cellW = 1000 / row2Count;
+                        const colIndex = i - row1Count;
+                        layout.push({x: colIndex * cellW, y: cellH, w: cellW, h: cellH});
+                    }
+                }
+            }
+
+            activeItems.forEach((item, i) => {
+              const {x, y, w, h} = layout[i];
+              drawSlot(imgs[i], item, x, y, w, h, '商品圖');
+
+              // 繪製文字 (無底色)
+              ctx.fillStyle = '#000000';
+              ctx.font = 'bold 30px "Microsoft JhengHei", sans-serif';
+              const padding = 24;
+              const pos = yahooState.textPosition;
+              
+              // 解析對齊方式
+              let align = 'left';
+              if (pos.includes('right')) align = 'right';
+              if (pos.includes('center')) align = 'center';
+              ctx.textAlign = align;
+              ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
+              
+              let tx = x + padding;
+              if (align === 'right') tx = x + w - padding;
+              if (align === 'center') tx = x + w / 2;
+              
+              const ty = pos.includes('top') ? y + padding : y + h - padding;
+              ctx.fillText(item.text, tx, ty);
+            });
+
+          } else if (activeTab === 'lifestyle') {
+            const mainImg = await loadImage(lifestyleState.mainImage.imageSrc);
+            const count = lifestyleState.itemCount;
+            const activeItems = lifestyleState.items.slice(0, count);
+            const imgs = await Promise.all(activeItems.map(s => loadImage(s.imageSrc)));
+            if (!isActive) return;
+
+            const lw = lifestyleState.leftWidth;
+            drawSlot(mainImg, lifestyleState.mainImage, 0, 0, lw, 1000, '左側形象圖');
+
+            const rw = 1000 - lw;
+            const cols = lifestyleState.rightCols;
+            const rows = Math.ceil(count / cols);
+            const cellW = rw / cols;
+            const cellH = 1000 / rows;
+
+            activeItems.forEach((item, i) => {
+              const col = i % cols;
+              const row = Math.floor(i / cols);
+              const x = lw + col * cellW;
+              const y = row * cellH;
+              
+              drawSlot(imgs[i], item, x, y, cellW, cellH, '商品');
+
+              ctx.fillStyle = '#000000';
+              ctx.font = 'italic bold 28px "Microsoft JhengHei", sans-serif';
+              const padding = 16;
+              const pos = lifestyleState.textPosition;
+              ctx.textAlign = pos.includes('left') ? 'left' : 'right';
+              ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
+              const tx = pos.includes('left') ? x + padding : x + cellW - padding;
+              const ty = pos.includes('top') ? y + padding : y + cellH - padding;
+              ctx.fillText(item.text, tx, ty);
+            });
+          }
+        };
+
+        drawCanvas();
+        return () => { isActive = false; };
+      }, [activeTab, headerData, shoesState, clothesState, singleState, tnfState, yahooState, lifestyleState]);
+
+      const handleDownload = () => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          try {
+            let filename = '組合圖.jpg';
+            if (activeTab === 'yahoo') filename = `Yahoo多圖_${yahooState.itemCount}件.jpg`;
+            else if (activeTab === 'lifestyle') filename = `形象圖版_${lifestyleState.itemCount}雙.jpg`;
+            else {
+              const parts = headerData.product.trim().split(/\s+/);
+              filename = `${headerData.style}_${parts[parts.length - 1] || '型號'}.jpg`;
+            }
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+          } catch (err) {
+            alert("下載失敗！可能是外部圖片連結阻擋了匯出。");
+          }
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col md:flex-row p-4 md:p-6 gap-6 font-sans">
+          
+          <div className="w-full md:w-[450px] shrink-0 bg-white p-5 rounded-2xl shadow-sm flex flex-col gap-4 border border-gray-200 md:h-[calc(100vh-3rem)] md:overflow-y-auto">
+            
+            <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-3 sticky top-0 bg-white z-20">
+              {[
+                { id: 'shoes', label: '👟 帶頭_鞋' },
+                { id: 'clothes', label: '👕 帶頭_服' },
+                { id: 'single', label: '📦 單品' },
+                { id: 'tnf', label: '🧥 TNF型' },
+                { id: 'yahoo', label: '🛍️ Yahoo' },
+                { id: 'lifestyle', label: '📸 形象圖' }
+              ].map(tab => (
+                <button 
+                  key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-2 text-xs font-bold rounded-lg transition-all border ${activeTab === tab.id ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 p-3.5 rounded-xl border border-blue-200 flex flex-col gap-2.5">
+                <label className="text-xs font-bold text-blue-800 flex items-center">
+                    💾 版型設定儲存庫 (僅儲存設定與微調參數)
+                </label>
+                
+                {templates.length > 0 && (
+                    <div className="flex gap-2">
+                        <select 
+                            className="flex-1 p-2 border border-blue-300 rounded text-xs font-bold focus:ring-1 focus:ring-blue-500 bg-white"
+                            value={selectedTemplate}
+                            onChange={e => setSelectedTemplate(e.target.value)}
+                        >
+                            <option value="">-- 選擇已儲存的設定 --</option>
+                            {templates.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+                        </select>
+                        <button onClick={loadTemplate} disabled={!selectedTemplate} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded hover:bg-blue-700 disabled:opacity-50">載入</button>
+                        <button onClick={deleteTemplate} disabled={!selectedTemplate} className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded hover:bg-red-600 disabled:opacity-50">刪除</button>
+                    </div>
+                )}
+
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        placeholder="輸入設定名稱 (如: 形象圖-左窄右雙排)" 
+                        value={newTemplateName}
+                        onChange={e => setNewTemplateName(e.target.value)}
+                        className="flex-1 p-2 border border-blue-300 rounded text-xs font-bold focus:ring-1 focus:ring-blue-500 bg-white"
+                    />
+                    <button onClick={saveTemplate} className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700 whitespace-nowrap shadow-sm">儲存設定</button>
+                </div>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
+              
+              {activeTab === 'yahoo' ? (
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex-1 flex flex-col gap-1.5 min-w-[80px]">
+                    <label className="text-xs font-bold text-gray-700">組合數量 (3~8)</label>
+                    <select className="p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={yahooState.itemCount} onChange={(e) => setYahooState({...yahooState, itemCount: Number(e.target.value)})}>
+                      {[3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}件</option>)}
+                    </select>
+                  </div>
+                  <div className="flex-1 flex flex-col gap-1.5 min-w-[120px]">
+                    <label className="text-xs font-bold text-gray-700">排版方向</label>
+                    <select className="p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={yahooState.layoutType} onChange={(e) => setYahooState({...yahooState, layoutType: e.target.value})}>
+                      <option value="horizontal">橫式 (2直欄)</option>
+                      <option value="vertical">直式 (上下兩列)</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 flex flex-col gap-1.5 min-w-[80px]">
+                    <label className="text-xs font-bold text-gray-700">文字位置</label>
+                    <select className="p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={yahooState.textPosition} onChange={(e) => setYahooState({...yahooState, textPosition: e.target.value})}>
+                      <option value="bottom-left">左下</option><option value="bottom-center">中下</option><option value="bottom-right">右下</option><option value="top-left">左上</option>
+                    </select>
+                  </div>
+                </div>
+              ) : activeTab === 'lifestyle' ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-gray-700">左側形象圖寬度</label>
+                      <span className="text-xs font-bold text-blue-600">{lifestyleState.leftWidth}px</span>
+                    </div>
+                    <input type="range" min="400" max="600" step="5" value={lifestyleState.leftWidth} onChange={(e) => setLifestyleState({...lifestyleState, leftWidth: Number(e.target.value)})} className="w-full h-1.5 bg-gray-300 rounded appearance-none cursor-pointer" />
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-gray-700">右側數量</label>
+                      <select className="p-1.5 border rounded text-xs font-bold" value={lifestyleState.itemCount} onChange={(e) => setLifestyleState({...lifestyleState, itemCount: Number(e.target.value)})}>
+                        {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}雙</option>)}
+                      </select>
+                    </div>
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-gray-700">右側直列</label>
+                      <select className="p-1.5 border rounded text-xs font-bold" value={lifestyleState.rightCols} onChange={(e) => setLifestyleState({...lifestyleState, rightCols: Number(e.target.value)})}>
+                        <option value={1}>單排</option><option value={2}>雙排</option>
+                      </select>
+                    </div>
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-gray-700">文字位置</label>
+                      <select className="p-1.5 border rounded text-xs font-bold" value={lifestyleState.textPosition} onChange={(e) => setLifestyleState({...lifestyleState, textPosition: e.target.value})}>
+                        <option value="bottom-left">左下</option><option value="bottom-right">右下</option><option value="top-left">左上</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-3">
+                    <div className="flex flex-col gap-1.5 w-1/3">
+                      <label className="text-xs font-bold text-gray-700">款式</label>
+                      <select className="w-full p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={headerData.style} onChange={(e) => setHeaderData({...headerData, style: e.target.value})}>
+                        {styleOptionsList.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5 w-2/3">
+                      <label className="text-xs font-bold text-gray-700">品牌</label>
+                      <input type="text" className="w-full p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={headerData.brand} onChange={(e) => setHeaderData({...headerData, brand: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-gray-700">品名</label>
+                    <input type="text" className="w-full p-2 border rounded focus:ring-1 focus:ring-gray-800 text-sm font-bold" value={headerData.product} onChange={(e) => setHeaderData({...headerData, product: e.target.value})} />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-bold text-gray-800">
+                  {activeTab === 'lifestyle' ? '🌍 全局商品調整 (不影響左側形象圖)' : '🌍 全局圖片調整 (套用於當前分頁所有圖片)'}
+                </label>
+                <div className="flex items-center gap-1 bg-white border border-gray-300 px-1.5 py-1 rounded shadow-sm">
+                  <span className="text-[10px] font-bold text-gray-600">統一底色:</span>
+                  <input type="color" value={getFirstItemValue('bgColor')} onChange={(e) => handleApplyGlobal('bgColor', e.target.value)} className="w-4 h-4 p-0 border-0 cursor-pointer" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between"><span className="text-[10px] font-bold text-gray-500">統一大小</span><span className="text-[10px] font-bold">{getFirstItemValue('zoom')}x</span></div>
+                  <input type="range" min="0.5" max="3" step="0.1" value={getFirstItemValue('zoom')} onChange={(e) => handleApplyGlobal('zoom', Number(e.target.value))} className="w-full h-1 bg-gray-300 rounded cursor-pointer" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between"><span className="text-[10px] font-bold text-gray-500">統一左右</span><span className="text-[10px] font-bold">{getFirstItemValue('offsetX')}</span></div>
+                  <input type="range" min="-400" max="400" step="10" value={getFirstItemValue('offsetX')} onChange={(e) => handleApplyGlobal('offsetX', Number(e.target.value))} className="w-full h-1 bg-gray-300 rounded cursor-pointer" />
+                </div>
+                <div className="flex flex-col gap-1 col-span-2">
+                  <div className="flex justify-between"><span className="text-[10px] font-bold text-gray-500">統一上下</span><span className="text-[10px] font-bold">{getFirstItemValue('offsetY')}</span></div>
+                  <input type="range" min="-400" max="400" step="10" value={getFirstItemValue('offsetY')} onChange={(e) => handleApplyGlobal('offsetY', Number(e.target.value))} className="w-full h-1 bg-gray-300 rounded cursor-pointer" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {activeTab === 'shoes' && shoesState.map((item, i) => (
+                <ImageSlotControl key={item.id} data={item} onChange={(v) => { const n = [...shoesState]; n[i] = v; setShoesState(n); }} onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)} />
+              ))}
+              {activeTab === 'clothes' && clothesState.map((item, i) => (
+                <ImageSlotControl key={item.id} data={item} onChange={(v) => { const n = [...clothesState]; n[i] = v; setClothesState(n); }} onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)} />
+              ))}
+              {activeTab === 'single' && singleState.map((item, i) => (
+                <ImageSlotControl key={item.id} data={item} onChange={(v) => { const n = [...singleState]; n[i] = v; setSingleState(n); }} onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)} />
+              ))}
+              {activeTab === 'tnf' && tnfState.map((item, i) => (
+                <ImageSlotControl key={item.id} data={item} onChange={(v) => { const n = [...tnfState]; n[i] = v; setTnfState(n); }} onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)} />
+              ))}
+              {activeTab === 'yahoo' && yahooState.items.slice(0, yahooState.itemCount).map((item, i) => (
+                <ImageSlotControl 
+                  key={item.id} data={item} 
+                  onChange={(v) => { const n = [...yahooState.items]; n[i] = v; setYahooState({...yahooState, items: n}); }} 
+                  onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)}
+                  extraHeader={<input type="text" value={item.text} onChange={(e) => { const n = [...yahooState.items]; n[i] = {...item, text: e.target.value}; setYahooState({...yahooState, items: n}); }} className="border border-gray-300 p-1 rounded text-xs w-[140px] font-bold focus:ring-1 focus:ring-gray-800" placeholder="輸入文字..." />}
+                />
+              ))}
+              {activeTab === 'lifestyle' && (
+                <>
+                  <ImageSlotControl 
+                    data={lifestyleState.mainImage} 
+                    onChange={(v) => setLifestyleState({...lifestyleState, mainImage: v})} 
+                    onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)} 
+                  />
+                  <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-gray-300"></div><span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-bold">右側商品圖</span><div className="flex-grow border-t border-gray-300"></div>
+                  </div>
+                  {lifestyleState.items.slice(0, lifestyleState.itemCount).map((item, i) => (
+                    <ImageSlotControl 
+                      key={item.id} data={item} 
+                      onChange={(v) => { const n = [...lifestyleState.items]; n[i] = v; setLifestyleState({...lifestyleState, items: n}); }} 
+                      onApplyBgToAll={(c) => handleApplyGlobal('bgColor', c)}
+                      extraHeader={<input type="text" value={item.text} onChange={(e) => { const n = [...lifestyleState.items]; n[i] = {...item, text: e.target.value}; setLifestyleState({...lifestyleState, items: n}); }} className="border border-gray-300 p-1 rounded text-xs w-[140px] font-bold focus:ring-1 focus:ring-gray-800" placeholder="輸入文字..." />}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-white pt-2 mt-auto">
+              <button onClick={handleDownload} className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md">
+                📥 匯出 1000x1000 組合圖
+              </button>
+            </div>
+          </div>
+
+          <div className="w-full flex-1 bg-gray-200 rounded-2xl flex items-center justify-center p-4 md:p-8 border border-gray-300 shadow-inner md:h-[calc(100vh-3rem)] md:sticky md:top-6">
+            <canvas ref={canvasRef} width={1000} height={1000} className="max-w-full max-h-full w-auto h-auto bg-white rounded-lg shadow-2xl" />
+          </div>
+
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
