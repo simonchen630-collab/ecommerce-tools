@@ -25,27 +25,52 @@
 
     const ImageUploader = ({ value, onChange }) => {
       const [isDragging, setIsDragging] = useState(false);
-      const [inputText, setInputText] = useState(value.startsWith('data:image') ? '' : value);
+      
+      // 初始化與反向解析：如果是 Cloudflare 的網址，我們把它還原成「型號」顯示在框框裡
+      const [inputText, setInputText] = useState(() => {
+        if (!value || value.startsWith('data:image')) return '';
+        const r2Prefix = 'https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/';
+        if (value.startsWith(r2Prefix) && value.endsWith('_1.jpg')) {
+          return value.replace(r2Prefix, '').replace('_1.jpg', '');
+        }
+        return value;
+      });
 
+      // 監聽外部傳來的 value (例如載入樣板時)
       useEffect(() => {
-        if (!value) setInputText('');
-        else if (!value.startsWith('data:image')) setInputText(value);
+        if (!value) {
+          setInputText('');
+        } else if (!value.startsWith('data:image')) {
+          const r2Prefix = 'https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/';
+          if (value.startsWith(r2Prefix) && value.endsWith('_1.jpg')) {
+            const model = value.replace(r2Prefix, '').replace('_1.jpg', '');
+            if (inputText !== model) setInputText(model);
+          } else {
+            if (inputText !== value) setInputText(value);
+          }
+        }
       }, [value]);
 
-      const processInput = (val) => {
-        const trimmed = val.trim();
-        if (!trimmed) {
-          onChange('');
+      // 【核心優化】：Debounce 防抖自動載入機制
+      useEffect(() => {
+        const trimmed = inputText.trim();
+        if (!trimmed) return;
+
+        // 如果是貼上網址，不等待，直接套用
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image')) {
+          if (value !== trimmed) onChange(trimmed);
           return;
         }
-        if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image')) {
-          onChange(trimmed);
-        } else {
+
+        // 如果是輸入型號，設定 700 毫秒的計時器。
+        // 如果在 700 毫秒內又打了下一個字，這個計時器會被清除重來 (打字中不會一直狂閃)
+        const timer = setTimeout(() => {
           const constructedUrl = `https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/${trimmed}_1.jpg`;
-          onChange(constructedUrl);
-          setInputText(constructedUrl); 
-        }
-      };
+          if (value !== constructedUrl) onChange(constructedUrl);
+        }, 700);
+
+        return () => clearTimeout(timer); // 清除前一次的計時器
+      }, [inputText]);
 
       const handleFile = (file) => {
         if (file && file.type.startsWith('image/')) {
@@ -84,19 +109,27 @@
           {isDragging && <div className="text-xs font-bold text-blue-600 text-center mb-1">放開以載入圖片</div>}
           <input 
             type="text" 
-            placeholder="貼網址、截圖Ctrl+V，或輸入型號按Enter..." 
+            placeholder="貼網址、截圖Ctrl+V，或輸入型號..." 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); processInput(inputText); } }}
-            onBlur={() => processInput(inputText)}
-            className="w-full p-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-800"
+            onKeyDown={(e) => { 
+              if (e.key === 'Enter') { 
+                e.preventDefault(); 
+                const trimmed = inputText.trim();
+                if (!trimmed) return;
+                if (!trimmed.startsWith('http')) {
+                  onChange(`https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/${trimmed}_1.jpg`);
+                }
+              } 
+            }}
+            className="w-full p-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-800 font-bold"
           />
           <div className="flex items-center justify-between mt-1">
             <input 
               type="file" accept="image/*" onChange={(e) => handleFile(e.target.files[0])}
               className="text-[10px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:font-bold file:bg-gray-200 hover:file:bg-gray-300 cursor-pointer w-[140px]"
             />
-            {value && <button onClick={() => onChange('')} className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1">清除</button>}
+            {value && <button onClick={() => { onChange(''); setInputText(''); }} className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1">清除</button>}
           </div>
         </div>
       );
@@ -479,7 +512,6 @@
       return (
         <div className="min-h-screen flex flex-col md:flex-row p-4 md:p-6 gap-6 font-sans">
           
-          {/* 左側面板 - 修正了 Padding 與 Z-index 的排版 */}
           <div className="w-full md:w-[450px] shrink-0 bg-white px-5 pt-5 rounded-2xl shadow-sm flex flex-col gap-4 border border-gray-200 md:h-[calc(100vh-3rem)] md:overflow-y-auto relative">
             
             <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-3 sticky top-0 bg-white z-20 pt-1">
@@ -676,7 +708,6 @@
               )}
             </div>
             
-            {/* 修正了這裡的圖層高度，給予最高的 z-50 */}
             <div className="sticky bottom-0 bg-white pb-5 pt-3 mt-auto z-50">
               <button onClick={handleDownload} className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md border-t border-gray-200">
                 📥 匯出 1000x1000 組合圖
