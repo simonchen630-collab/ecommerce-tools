@@ -23,12 +23,10 @@
     import React, { useState, useEffect, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
 
-    // 獨立的圖片上傳與拖曳元件 (去除標題，專注於上傳行為)
     const ImageUploader = ({ value, onChange }) => {
       const [isDragging, setIsDragging] = useState(false);
       const [inputText, setInputText] = useState(value.startsWith('data:image') ? '' : value);
 
-      // 當外部 value 改變時 (例如載入樣板或清除)，同步更新輸入框
       useEffect(() => {
         if (!value) setInputText('');
         else if (!value.startsWith('data:image')) setInputText(value);
@@ -40,13 +38,12 @@
           onChange('');
           return;
         }
-        // 智慧判斷：如果是網址就直接用，如果不是就當作型號組合專屬網址
         if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image')) {
           onChange(trimmed);
         } else {
           const constructedUrl = `https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/${trimmed}_1.jpg`;
           onChange(constructedUrl);
-          setInputText(constructedUrl); // 變回完整網址讓使用者知道已經轉換成功
+          setInputText(constructedUrl); 
         }
       };
 
@@ -63,14 +60,12 @@
       const handleDragLeave = (e) => { prevent(e); setIsDragging(false); };
       const handleDrop = (e) => { prevent(e); setIsDragging(false); handleFile(e.dataTransfer.files[0]); };
 
-      // 新增：處理剪貼簿貼上事件 (Ctrl+V / Cmd+V)
       const handlePaste = (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
         for (let i = 0; i < items.length; i++) {
-          // 如果剪貼簿裡包含圖片
           if (items[i].type.indexOf('image') !== -1) {
-            e.preventDefault(); // 阻止預設的貼上行為(避免貼上一堆亂碼)
+            e.preventDefault(); 
             const file = items[i].getAsFile();
             handleFile(file);
             return;
@@ -107,11 +102,9 @@
       );
     };
 
-    // 單一欄位的高級控制面板 (包含標題、微調拉桿、背景滴管、上傳區塊)
     const ImageSlotControl = ({ data, onChange, onApplyBgToAll, extraHeader }) => {
       return (
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3 relative overflow-hidden">
-          {/* 標題與底色控制列 */}
           <div className="flex justify-between items-center border-b border-gray-100 pb-2 z-10">
             <div className="flex items-center gap-3">
               <span className="font-extrabold text-gray-800 text-sm md:text-base">{data.label}</span>
@@ -129,7 +122,6 @@
             {extraHeader}
           </div>
 
-          {/* 微調拉桿列 */}
           <div className="grid grid-cols-2 gap-x-3 gap-y-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
             <div className="flex flex-col gap-0.5">
               <div className="flex justify-between text-[10px] font-bold text-gray-500"><span>放大</span><span>{data.zoom}x</span></div>
@@ -144,13 +136,11 @@
               <input type="range" min="-400" max="400" step="10" value={data.offsetY} onChange={(e) => onChange({...data, offsetY: Number(e.target.value)})} className="w-full h-1 bg-gray-300 rounded appearance-none cursor-pointer" />
             </div>
           </div>
-
           <ImageUploader value={data.imageSrc} onChange={(val) => onChange({...data, imageSrc: val})} />
         </div>
       );
     };
 
-    // 產生預設的欄位資料結構
     const createSlot = (label, text = '') => ({
       id: Math.random().toString(36).substring(2, 9),
       label, text, imageSrc: '', zoom: 1.3, offsetX: 0, offsetY: 0, bgColor: '#F8F9FA'
@@ -159,22 +149,16 @@
     const styleOptionsList = Array.from({ length: 26 }).map((_, i) => `${String.fromCharCode(65 + i)}款`);
 
     function App() {
-      // 1. 全域標籤頁狀態
-      const [activeTab, setActiveTab] = useState('yahoo'); // 將預設分頁設為 Yahoo 方便測試
-      
-      // 2. 帶標題版型共用文字狀態 (前四個 Tab 用)
-      const [headerData, setHeaderData] = useState({
-        style: 'A款', brand: 'NIKE', product: '男 運動休閒鞋 FV0376'
-      });
+      const [activeTab, setActiveTab] = useState('yahoo'); 
+      const [headerData, setHeaderData] = useState({ style: 'A款', brand: 'NIKE', product: '男 運動休閒鞋 FV0376' });
 
-      // 3. 各分頁專屬的圖片欄位資料結構
       const [shoesState, setShoesState] = useState([createSlot('中央大主圖'), createSlot('縮圖 左'), createSlot('縮圖 中'), createSlot('縮圖 右')]);
       const [clothesState, setClothesState] = useState([createSlot('左側服飾圖'), createSlot('右側服飾圖')]);
       const [singleState, setSingleState] = useState([createSlot('單品大圖')]);
       const [tnfState, setTnfState] = useState([createSlot('左側主圖'), createSlot('右側主圖'), createSlot('縮圖 左'), createSlot('縮圖 中'), createSlot('縮圖 右')]);
       
       const [yahooState, setYahooState] = useState({
-        itemCount: 5, layoutType: 'vertical', textPosition: 'bottom-center', // 預設測試垂直排版
+        itemCount: 5, layoutType: 'vertical', textPosition: 'bottom-center',
         items: Array.from({length: 8}).map((_, i) => createSlot(`${String.fromCharCode(65+i)}`, `${String.fromCharCode(65+i)}款-型號`))
       });
 
@@ -196,7 +180,6 @@
 
       const saveTemplate = () => {
         if (!newTemplateName.trim()) return alert('請輸入樣板名稱！');
-        
         const extractParams = (items) => items.map(i => ({ zoom: i.zoom, offsetX: i.offsetX, offsetY: i.offsetY, bgColor: i.bgColor }));
 
         const templateData = {
@@ -206,16 +189,11 @@
             singleState: extractParams(singleState),
             tnfState: extractParams(tnfState),
             yahooState: {
-                itemCount: yahooState.itemCount,
-                layoutType: yahooState.layoutType,
-                textPosition: yahooState.textPosition,
+                itemCount: yahooState.itemCount, layoutType: yahooState.layoutType, textPosition: yahooState.textPosition,
                 items: extractParams(yahooState.items)
             },
             lifestyleState: {
-                leftWidth: lifestyleState.leftWidth,
-                itemCount: lifestyleState.itemCount,
-                rightCols: lifestyleState.rightCols,
-                textPosition: lifestyleState.textPosition,
+                leftWidth: lifestyleState.leftWidth, itemCount: lifestyleState.itemCount, rightCols: lifestyleState.rightCols, textPosition: lifestyleState.textPosition,
                 mainImage: { zoom: lifestyleState.mainImage.zoom, offsetX: lifestyleState.mainImage.offsetX, offsetY: lifestyleState.mainImage.offsetY, bgColor: lifestyleState.mainImage.bgColor },
                 items: extractParams(lifestyleState.items)
             }
@@ -231,7 +209,6 @@
       const loadTemplate = () => {
         const t = templates.find(t => t.name === selectedTemplate);
         if (!t) return;
-
         const applyParams = (currentItems, savedItems) => currentItems.map((item, i) => {
             const saved = savedItems?.[i];
             return saved ? { ...item, zoom: saved.zoom, offsetX: saved.offsetX, offsetY: saved.offsetY, bgColor: saved.bgColor } : item;
@@ -245,10 +222,7 @@
 
         if (t.data.yahooState) {
             setYahooState(prev => ({
-                ...prev,
-                itemCount: t.data.yahooState.itemCount ?? prev.itemCount,
-                layoutType: t.data.yahooState.layoutType ?? 'horizontal',
-                textPosition: t.data.yahooState.textPosition ?? prev.textPosition,
+                ...prev, itemCount: t.data.yahooState.itemCount ?? prev.itemCount, layoutType: t.data.yahooState.layoutType ?? 'horizontal', textPosition: t.data.yahooState.textPosition ?? prev.textPosition,
                 items: applyParams(prev.items, t.data.yahooState.items)
             }));
         }
@@ -258,13 +232,8 @@
                 const s = t.data.lifestyleState;
                 const newMain = s.mainImage ? { ...prev.mainImage, zoom: s.mainImage.zoom, offsetX: s.mainImage.offsetX, offsetY: s.mainImage.offsetY, bgColor: s.mainImage.bgColor } : prev.mainImage;
                 return {
-                    ...prev,
-                    leftWidth: s.leftWidth ?? prev.leftWidth,
-                    itemCount: s.itemCount ?? prev.itemCount,
-                    rightCols: s.rightCols ?? prev.rightCols,
-                    textPosition: s.textPosition ?? prev.textPosition,
-                    mainImage: newMain,
-                    items: applyParams(prev.items, s.items)
+                    ...prev, leftWidth: s.leftWidth ?? prev.leftWidth, itemCount: s.itemCount ?? prev.itemCount, rightCols: s.rightCols ?? prev.rightCols, textPosition: s.textPosition ?? prev.textPosition,
+                    mainImage: newMain, items: applyParams(prev.items, s.items)
                 };
             });
         }
@@ -277,16 +246,13 @@
         setSelectedTemplate('');
       };
       
-      // 將某個數值(大小/平移/顏色) 一鍵套用到目前分頁的所有圖片上
       const handleApplyGlobal = (key, val) => {
         if (activeTab === 'shoes') setShoesState(prev => prev.map(i => ({...i, [key]: val})));
         else if (activeTab === 'clothes') setClothesState(prev => prev.map(i => ({...i, [key]: val})));
         else if (activeTab === 'single') setSingleState(prev => prev.map(i => ({...i, [key]: val})));
         else if (activeTab === 'tnf') setTnfState(prev => prev.map(i => ({...i, [key]: val})));
         else if (activeTab === 'yahoo') setYahooState(prev => ({...prev, items: prev.items.map(i => ({...i, [key]: val}))}));
-        else if (activeTab === 'lifestyle') {
-          setLifestyleState(prev => ({ ...prev, items: prev.items.map(i => ({...i, [key]: val})) }));
-        }
+        else if (activeTab === 'lifestyle') setLifestyleState(prev => ({ ...prev, items: prev.items.map(i => ({...i, [key]: val})) }));
       };
 
       const getFirstItemValue = (key) => {
@@ -320,12 +286,11 @@
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          // 統一的圖片繪製與裁切函式
           const drawSlot = (img, slotData, x, y, w, h, placeholderText) => {
             ctx.save();
             ctx.beginPath();
             ctx.rect(x, y, w, h);
-            ctx.clip(); // 設定邊界裁切
+            ctx.clip(); 
             
             ctx.fillStyle = slotData.bgColor;
             ctx.fillRect(x, y, w, h);
@@ -335,23 +300,17 @@
               const cellRatio = w / h;
               let drawW, drawH;
               
-              // 基礎等比計算 (Contain)
               if (imgRatio > cellRatio) {
-                drawW = w;
-                drawH = w / imgRatio;
+                drawW = w; drawH = w / imgRatio;
               } else {
-                drawH = h;
-                drawW = h * imgRatio;
+                drawH = h; drawW = h * imgRatio;
               }
               
-              // 乘上微調放大倍率
               drawW *= slotData.zoom;
               drawH *= slotData.zoom;
               
-              // 加上平移偏移量
               const drawX = x + (w - drawW) / 2 + slotData.offsetX;
               const drawY = y + (h - drawH) / 2 + slotData.offsetY;
-
               ctx.drawImage(img, drawX, drawY, drawW, drawH);
             } else {
               ctx.fillStyle = '#DDDDDD';
@@ -364,32 +323,24 @@
           };
 
           const drawHeader = () => {
-            ctx.fillStyle = '#999999';
-            ctx.fillRect(0, 0, canvas.width, 130);
-            
-            ctx.fillStyle = '#0F0F0F';
-            ctx.beginPath();
+            ctx.fillStyle = '#999999'; ctx.fillRect(0, 0, canvas.width, 130);
+            ctx.fillStyle = '#0F0F0F'; ctx.beginPath();
             ctx.moveTo(0, 0); ctx.lineTo(220, 0); ctx.lineTo(170, 130); ctx.lineTo(0, 130);
             ctx.closePath(); ctx.fill();
 
-            ctx.fillStyle = '#FFFFFF';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
             ctx.font = 'bold 72px "Noto Sans TC", sans-serif';
             ctx.fillText(headerData.style, 40, 65);
 
-            const maxTextWidth = 1000 - 240 - 40;
-            ctx.letterSpacing = '2px';
+            const maxTextWidth = 1000 - 240 - 40; ctx.letterSpacing = '2px';
             
-            let bSize = 40;
-            ctx.font = `bold ${bSize}px "Noto Sans TC", sans-serif`;
+            let bSize = 40; ctx.font = `bold ${bSize}px "Noto Sans TC", sans-serif`;
             while(ctx.measureText(headerData.brand).width > maxTextWidth && bSize > 12) {
               bSize--; ctx.font = `bold ${bSize}px "Noto Sans TC", sans-serif`;
             }
             ctx.fillText(headerData.brand, 240, 45);
 
-            let pSize = 40;
-            ctx.font = `bold ${pSize}px "Noto Sans TC", sans-serif`;
+            let pSize = 40; ctx.font = `bold ${pSize}px "Noto Sans TC", sans-serif`;
             while(ctx.measureText(headerData.product).width > maxTextWidth && pSize > 12) {
               pSize--; ctx.font = `bold ${pSize}px "Noto Sans TC", sans-serif`;
             }
@@ -406,20 +357,17 @@
             drawSlot(imgs[1], shoesState[1], 0, 667, sz, sz, '縮圖左');
             drawSlot(imgs[2], shoesState[2], sz, 667, sz, sz, '縮圖中');
             drawSlot(imgs[3], shoesState[3], sz*2, 667, sz, sz, '縮圖右');
-
           } else if (activeTab === 'clothes') {
             const imgs = await Promise.all(clothesState.map(s => loadImage(s.imageSrc)));
             if (!isActive) return;
             drawHeader();
             drawSlot(imgs[0], clothesState[0], 0, 130, 500, 870, '左側服飾');
             drawSlot(imgs[1], clothesState[1], 500, 130, 500, 870, '右側服飾');
-
           } else if (activeTab === 'single') {
             const img = await loadImage(singleState[0].imageSrc);
             if (!isActive) return;
             drawHeader();
             drawSlot(img, singleState[0], 0, 130, 1000, 870, '單品大圖');
-
           } else if (activeTab === 'tnf') {
             const imgs = await Promise.all(tnfState.map(s => loadImage(s.imageSrc)));
             if (!isActive) return;
@@ -430,7 +378,6 @@
             drawSlot(imgs[2], tnfState[2], 0, 667, sz, sz, '縮圖左');
             drawSlot(imgs[3], tnfState[3], sz, 667, sz, sz, '縮圖中');
             drawSlot(imgs[4], tnfState[4], sz*2, 667, sz, sz, '縮圖右');
-
           } else if (activeTab === 'yahoo') {
             const count = yahooState.itemCount;
             const layoutType = yahooState.layoutType || 'horizontal';
@@ -439,61 +386,43 @@
             if (!isActive) return;
 
             const layout = [];
-            
-            // 橫式 (鞋類) 計算邏輯
             if (layoutType === 'horizontal') {
                 let cols = 2; let rows = Math.ceil(count / 2);
                 if (count === 3) { cols = 1; rows = 3; }
                 const cellW = 1000 / cols; const cellH = 1000 / rows;
-
                 for(let i=0; i<count; i++) {
                     let row = Math.floor(i / cols); let col = i % cols;
-                    if (count !== 3 && count % 2 === 1 && i === count - 1) col = 0.5; // 單數置中
+                    if (count !== 3 && count % 2 === 1 && i === count - 1) col = 0.5;
                     layout.push({x: col * cellW, y: row * cellH, w: cellW, h: cellH});
                 }
             } else {
-                // 直式 (服飾) 上下兩排切割邏輯
                 const row1Count = Math.floor(count / 2);
                 const row2Count = Math.ceil(count / 2);
-                const cellH = 500; // 永遠兩排，所以高度固定 500
-                
+                const cellH = 500; 
                 for (let i = 0; i < count; i++) {
                     if (i < row1Count) {
-                        const cellW = 1000 / row1Count;
-                        layout.push({x: i * cellW, y: 0, w: cellW, h: cellH});
+                        const cellW = 1000 / row1Count; layout.push({x: i * cellW, y: 0, w: cellW, h: cellH});
                     } else {
-                        const cellW = 1000 / row2Count;
-                        const colIndex = i - row1Count;
+                        const cellW = 1000 / row2Count; const colIndex = i - row1Count;
                         layout.push({x: colIndex * cellW, y: cellH, w: cellW, h: cellH});
                     }
                 }
             }
-
             activeItems.forEach((item, i) => {
               const {x, y, w, h} = layout[i];
               drawSlot(imgs[i], item, x, y, w, h, '商品圖');
-
-              // 繪製文字 (無底色)
-              ctx.fillStyle = '#000000';
-              ctx.font = 'bold 30px "Microsoft JhengHei", sans-serif';
-              const padding = 24;
-              const pos = yahooState.textPosition;
-              
-              // 解析對齊方式
+              ctx.fillStyle = '#000000'; ctx.font = 'bold 30px "Microsoft JhengHei", sans-serif';
+              const padding = 24; const pos = yahooState.textPosition;
               let align = 'left';
               if (pos.includes('right')) align = 'right';
               if (pos.includes('center')) align = 'center';
-              ctx.textAlign = align;
-              ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
-              
+              ctx.textAlign = align; ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
               let tx = x + padding;
               if (align === 'right') tx = x + w - padding;
               if (align === 'center') tx = x + w / 2;
-              
               const ty = pos.includes('top') ? y + padding : y + h - padding;
               ctx.fillText(item.text, tx, ty);
             });
-
           } else if (activeTab === 'lifestyle') {
             const mainImg = await loadImage(lifestyleState.mainImage.imageSrc);
             const count = lifestyleState.itemCount;
@@ -503,27 +432,18 @@
 
             const lw = lifestyleState.leftWidth;
             drawSlot(mainImg, lifestyleState.mainImage, 0, 0, lw, 1000, '左側形象圖');
-
             const rw = 1000 - lw;
             const cols = lifestyleState.rightCols;
             const rows = Math.ceil(count / cols);
-            const cellW = rw / cols;
-            const cellH = 1000 / rows;
+            const cellW = rw / cols; const cellH = 1000 / rows;
 
             activeItems.forEach((item, i) => {
-              const col = i % cols;
-              const row = Math.floor(i / cols);
-              const x = lw + col * cellW;
-              const y = row * cellH;
-              
+              const col = i % cols; const row = Math.floor(i / cols);
+              const x = lw + col * cellW; const y = row * cellH;
               drawSlot(imgs[i], item, x, y, cellW, cellH, '商品');
-
-              ctx.fillStyle = '#000000';
-              ctx.font = 'italic bold 28px "Microsoft JhengHei", sans-serif';
-              const padding = 16;
-              const pos = lifestyleState.textPosition;
-              ctx.textAlign = pos.includes('left') ? 'left' : 'right';
-              ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
+              ctx.fillStyle = '#000000'; ctx.font = 'italic bold 28px "Microsoft JhengHei", sans-serif';
+              const padding = 16; const pos = lifestyleState.textPosition;
+              ctx.textAlign = pos.includes('left') ? 'left' : 'right'; ctx.textBaseline = pos.includes('top') ? 'top' : 'bottom';
               const tx = pos.includes('left') ? x + padding : x + cellW - padding;
               const ty = pos.includes('top') ? y + padding : y + cellH - padding;
               ctx.fillText(item.text, tx, ty);
@@ -559,9 +479,10 @@
       return (
         <div className="min-h-screen flex flex-col md:flex-row p-4 md:p-6 gap-6 font-sans">
           
-          <div className="w-full md:w-[450px] shrink-0 bg-white p-5 rounded-2xl shadow-sm flex flex-col gap-4 border border-gray-200 md:h-[calc(100vh-3rem)] md:overflow-y-auto">
+          {/* 左側面板 - 修正了 Padding 與 Z-index 的排版 */}
+          <div className="w-full md:w-[450px] shrink-0 bg-white px-5 pt-5 rounded-2xl shadow-sm flex flex-col gap-4 border border-gray-200 md:h-[calc(100vh-3rem)] md:overflow-y-auto relative">
             
-            <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-3 sticky top-0 bg-white z-20">
+            <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-3 sticky top-0 bg-white z-20 pt-1">
               {[
                 { id: 'shoes', label: '👟 帶頭_鞋' },
                 { id: 'clothes', label: '👕 帶頭_服' },
@@ -612,7 +533,6 @@
             </div>
 
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
-              
               {activeTab === 'yahoo' ? (
                 <div className="flex flex-wrap gap-4">
                   <div className="flex-1 flex flex-col gap-1.5 min-w-[80px]">
@@ -755,12 +675,14 @@
                 </>
               )}
             </div>
-
-            <div className="sticky bottom-0 bg-white pt-2 mt-auto">
-              <button onClick={handleDownload} className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md">
+            
+            {/* 修正了這裡的圖層高度，給予最高的 z-50 */}
+            <div className="sticky bottom-0 bg-white pb-5 pt-3 mt-auto z-50">
+              <button onClick={handleDownload} className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md border-t border-gray-200">
                 📥 匯出 1000x1000 組合圖
               </button>
             </div>
+
           </div>
 
           <div className="w-full flex-1 bg-gray-200 rounded-2xl flex items-center justify-center p-4 md:p-8 border border-gray-300 shadow-inner md:h-[calc(100vh-3rem)] md:sticky md:top-6">
