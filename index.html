@@ -26,7 +26,6 @@
     const ImageUploader = ({ value, onChange }) => {
       const [isDragging, setIsDragging] = useState(false);
       
-      // 初始化與反向解析：如果是 Cloudflare 的網址，我們把它還原成「型號」顯示在框框裡
       const [inputText, setInputText] = useState(() => {
         if (!value || value.startsWith('data:image')) return '';
         const r2Prefix = 'https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/';
@@ -36,7 +35,6 @@
         return value;
       });
 
-      // 監聽外部傳來的 value (例如載入樣板時)
       useEffect(() => {
         if (!value) {
           setInputText('');
@@ -51,25 +49,21 @@
         }
       }, [value]);
 
-      // 【核心優化】：Debounce 防抖自動載入機制
       useEffect(() => {
         const trimmed = inputText.trim();
         if (!trimmed) return;
 
-        // 如果是貼上網址，不等待，直接套用
         if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image')) {
           if (value !== trimmed) onChange(trimmed);
           return;
         }
 
-        // 如果是輸入型號，設定 700 毫秒的計時器。
-        // 如果在 700 毫秒內又打了下一個字，這個計時器會被清除重來 (打字中不會一直狂閃)
         const timer = setTimeout(() => {
           const constructedUrl = `https://pub-19fcde3e109840378be9cef06ec7b2cc.r2.dev/${trimmed}_1.jpg`;
           if (value !== constructedUrl) onChange(constructedUrl);
         }, 700);
 
-        return () => clearTimeout(timer); // 清除前一次的計時器
+        return () => clearTimeout(timer); 
       }, [inputText]);
 
       const handleFile = (file) => {
@@ -184,6 +178,9 @@
     function App() {
       const [activeTab, setActiveTab] = useState('yahoo'); 
       const [headerData, setHeaderData] = useState({ style: 'A款', brand: 'NIKE', product: '男 運動休閒鞋 FV0376' });
+      
+      // 新增：全局去背融合開關
+      const [globalMultiply, setGlobalMultiply] = useState(false);
 
       const [shoesState, setShoesState] = useState([createSlot('中央大主圖'), createSlot('縮圖 左'), createSlot('縮圖 中'), createSlot('縮圖 右')]);
       const [clothesState, setClothesState] = useState([createSlot('左側服飾圖'), createSlot('右側服飾圖')]);
@@ -217,6 +214,7 @@
 
         const templateData = {
             activeTab,
+            globalMultiply,
             shoesState: extractParams(shoesState),
             clothesState: extractParams(clothesState),
             singleState: extractParams(singleState),
@@ -248,6 +246,8 @@
         });
 
         if (t.data.activeTab) setActiveTab(t.data.activeTab);
+        if (t.data.globalMultiply !== undefined) setGlobalMultiply(t.data.globalMultiply);
+        
         if (t.data.shoesState) setShoesState(prev => applyParams(prev, t.data.shoesState));
         if (t.data.clothesState) setClothesState(prev => applyParams(prev, t.data.clothesState));
         if (t.data.singleState) setSingleState(prev => applyParams(prev, t.data.singleState));
@@ -319,7 +319,7 @@
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          const drawSlot = (img, slotData, x, y, w, h, placeholderText) => {
+          const drawSlot = (img, slotData, x, y, w, h, placeholderText, isMainImage = false) => {
             ctx.save();
             ctx.beginPath();
             ctx.rect(x, y, w, h);
@@ -344,7 +344,16 @@
               
               const drawX = x + (w - drawW) / 2 + slotData.offsetX;
               const drawY = y + (h - drawH) / 2 + slotData.offsetY;
+              
+              // 核心去背魔法：如果開啟，且不是形象大圖本身，就套用色彩增值
+              if (globalMultiply && !isMainImage) {
+                ctx.globalCompositeOperation = 'multiply';
+              }
+              
               ctx.drawImage(img, drawX, drawY, drawW, drawH);
+              
+              // 重設混合模式
+              ctx.globalCompositeOperation = 'source-over';
             } else {
               ctx.fillStyle = '#DDDDDD';
               ctx.font = 'bold 20px sans-serif';
@@ -464,7 +473,7 @@
             if (!isActive) return;
 
             const lw = lifestyleState.leftWidth;
-            drawSlot(mainImg, lifestyleState.mainImage, 0, 0, lw, 1000, '左側形象圖');
+            drawSlot(mainImg, lifestyleState.mainImage, 0, 0, lw, 1000, '左側形象圖', true);
             const rw = 1000 - lw;
             const cols = lifestyleState.rightCols;
             const rows = Math.ceil(count / cols);
@@ -486,7 +495,7 @@
 
         drawCanvas();
         return () => { isActive = false; };
-      }, [activeTab, headerData, shoesState, clothesState, singleState, tnfState, yahooState, lifestyleState]);
+      }, [activeTab, headerData, shoesState, clothesState, singleState, tnfState, yahooState, lifestyleState, globalMultiply]);
 
       const handleDownload = () => {
         const canvas = canvasRef.current;
@@ -642,11 +651,17 @@
             <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-xs font-bold text-gray-800">
-                  {activeTab === 'lifestyle' ? '🌍 全局商品調整 (不影響左側形象圖)' : '🌍 全局圖片調整 (套用於當前分頁所有圖片)'}
+                  {activeTab === 'lifestyle' ? '🌍 全局商品調整' : '🌍 全局圖片調整'}
                 </label>
-                <div className="flex items-center gap-1 bg-white border border-gray-300 px-1.5 py-1 rounded shadow-sm">
-                  <span className="text-[10px] font-bold text-gray-600">統一底色:</span>
-                  <input type="color" value={getFirstItemValue('bgColor')} onChange={(e) => handleApplyGlobal('bgColor', e.target.value)} className="w-4 h-4 p-0 border-0 cursor-pointer" />
+                <div className="flex gap-2">
+                  <label className="flex items-center gap-1 cursor-pointer hover:bg-white px-1.5 py-1 rounded transition-colors border border-transparent hover:border-gray-300">
+                    <input type="checkbox" checked={globalMultiply} onChange={(e) => setGlobalMultiply(e.target.checked)} className="cursor-pointer" />
+                    <span className="text-[10px] font-bold text-blue-700">🪄 自動去白底</span>
+                  </label>
+                  <div className="flex items-center gap-1 bg-white border border-gray-300 px-1.5 py-1 rounded shadow-sm">
+                    <span className="text-[10px] font-bold text-gray-600">統一底色:</span>
+                    <input type="color" value={getFirstItemValue('bgColor')} onChange={(e) => handleApplyGlobal('bgColor', e.target.value)} className="w-4 h-4 p-0 border-0 cursor-pointer" />
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
